@@ -2,26 +2,23 @@
     import { onMount, onDestroy } from "svelte";
     import * as THREE from "three";
 
-    import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
     import Stats from "three/examples/jsm/libs/stats.module.js";
 
-    import {
-        makeWireBall,
-        animateWireBall,
-        resetPlanePosition,
-    } from "./wireBall.js";
+    import { makeWireBall, animateWireBall } from "./wireBall.js";
     import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
     import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
     import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
     import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-    import { rotate } from "three/examples/jsm/nodes/Nodes.js";
+    import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
     var stats = Stats();
     stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
     document.body.appendChild(stats.dom);
 
-    let camera, renderer, ball, group, canvas, composer;
+    let camera, renderer, saveBall, group, canvas, composer;
     let saveOriginalVertices = [];
+
+    export let audioContext;
 
     const sizes = {
         width: window.innerWidth,
@@ -32,17 +29,16 @@
 
     const scene = new THREE.Scene();
 
-    onMount(async () => {
-        // Create the camera
-        camera = new THREE.PerspectiveCamera(
-            75,
-            sizes.width / sizes.height,
-            0.1,
-            1200,
-        );
-        camera.position.z = 125;
-        const controls = new OrbitControls(camera, canvas);
+    // Create the camera
+    camera = new THREE.PerspectiveCamera(
+        75,
+        sizes.width / sizes.height,
+        0.1,
+        1200,
+    );
+    camera.position.z = 125;
 
+    onMount(async () => {
         // Create the renderer
         renderer = new THREE.WebGLRenderer({
             canvas: canvas,
@@ -50,6 +46,8 @@
         });
         renderer.setSize(sizes.width, sizes.height);
         document.body.appendChild(renderer.domElement);
+
+        var controls = new OrbitControls(camera, renderer.domElement);
 
         // Create the geometry
         let {
@@ -64,11 +62,13 @@
             spotLight,
             saveOriginalVerticesTmp,
             neonMaterial,
+            spaceship,
         } = makeWireBall(scene, group);
         saveOriginalVertices = saveOriginalVerticesTmp;
+        saveBall = ball;
 
         // sample audio from mic
-        const audioContext = new AudioContext();
+        audioContext = new AudioContext();
         const analyser = audioContext.createAnalyser();
         const source = audioContext.createMediaStreamSource(
             await navigator.mediaDevices.getUserMedia({ audio: true }),
@@ -83,14 +83,14 @@
         const resetBall = () => {
             for (
                 let i = 0;
-                i < ball.geometry.attributes.position.array.length;
+                i < saveBall.geometry.attributes.position.array.length;
                 i++
             ) {
-                ball.geometry.attributes.position.array[i] =
+                saveBall.geometry.attributes.position.array[i] =
                     saveOriginalVertices[i];
             }
-            ball.geometry.attributes.position.needsUpdate = true;
-            ball.geometry.computeVertexNormals();
+            saveBall.geometry.attributes.position.needsUpdate = true;
+            saveBall.geometry.computeVertexNormals();
         };
 
         // effect composer
@@ -104,7 +104,7 @@
         );
         bloomPass.threshold = 0;
         // Calculate the distance between the camera and the ball
-        const distanceToBall = camera.position.distanceTo(ball.position);
+        const distanceToBall = camera.position.distanceTo(saveBall.position);
         // Adjust the bloom strength based on the distance
         bloomPass.strength = bloomPass.radius = -0.5;
         const outputPass = new OutputPass();
@@ -119,15 +119,25 @@
          **/
         let destroySphere = 0;
         const rotatePlane = {
-            active: false,
+            active: true,
+            // active: false,
             speed: 0.005,
             // 10 seconds
             interval: 1000 * 10,
             time: 0,
             reset: false,
+            nbRotate: 1,
+            timers: [],
+            clearTimerList: [],
+            clearTimers: () => {
+                rotatePlane.clearTimerList.forEach((timer) => {
+                    clearInterval(timer);
+                });
+            },
         };
         async function animate() {
             stats.begin();
+            controls.update();
             requestAnimationFrame(animate);
 
             // composer.render();
@@ -139,7 +149,7 @@
             destroySphere++;
 
             analyser.getByteFrequencyData(frequencyData);
-            animateWireBall(frequencyData, group, rotatePlane);
+            animateWireBall(frequencyData, group, rotatePlane, spaceship);
 
             renderer.render(scene, camera);
             composer.render();
@@ -168,15 +178,15 @@
         window.addEventListener("keydown", (event) => {
             if (event.key === "0") {
                 // 0 key
-                ball.material = normalMaterial;
+                saveBall.material = normalMaterial;
             }
             if (event.key === "1") {
                 // 1 key
-                ball.material = neonMaterial;
+                saveBall.material = neonMaterial;
             }
             if (event.key === "2") {
                 // 2 key
-                ball.material = lambertMaterial;
+                saveBall.material = lambertMaterial;
             }
             if (event.key === "r") {
                 // reset the camera
@@ -187,7 +197,7 @@
 
                 // reset the ball
                 resetBall();
-                ball.material = lambertMaterial;
+                saveBall.material = lambertMaterial;
 
                 // reset the plane
                 rotatePlane.active = false;
@@ -195,12 +205,12 @@
             }
             if (event.key === "ArrowRight") {
                 // right arrow key
-                rotatePlane.active = !rotatePlane.active;
+                // rotatePlane.active = !rotatePlane.active;
                 rotatePlane.direction = "right";
             }
             if (event.key === "ArrowLeft") {
                 // left arrow key
-                rotatePlane.active = !rotatePlane.active;
+                // rotatePlane.active = !rotatePlane.active;
                 rotatePlane.direction = "left";
             }
             if (event.key === "ArrowUp") {
@@ -222,7 +232,11 @@
     });
 </script>
 
-<canvas bind:this={canvas}> </canvas>
+{#if audioContext}
+    <canvas bind:this={canvas}> </canvas>
+{:else}
+    <p>Sorry, your browser does not support the Web Audio API</p>
+{/if}
 
 <style>
     canvas {

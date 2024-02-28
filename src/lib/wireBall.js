@@ -1,12 +1,64 @@
 import * as THREE from "three";
 import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise.js";
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+
 var noise = new SimplexNoise();
 
 const mouvementValue = 1
 const zmin = -1200
 const base = 400
 
-function makeWireBall(scene, group, saveOriginalVertices) {
+function loadSpaceship(scene) {
+    // Instantiate a loader
+    const loader = new GLTFLoader();
+
+    // Optional: Provide a DRACOLoader instance to decode compressed mesh data
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('/examples/jsm/libs/draco/');
+    loader.setDRACOLoader(dracoLoader);
+
+    var spaceship = new THREE.Object3D();
+    // Load a glTF resource
+    loader.load(
+        // resource URL
+        'scene.gltf',
+        // called when the resource is loaded
+        function (gltf) {
+            gltf.scene.scale.set(1, 1, 1);
+            gltf.scene.position.set(0, 0, 100);
+            gltf.scene.rotation.set(
+                0,
+                Math.PI,
+                0
+            )
+            spaceship.add(gltf.scene);
+        },
+        // called while loading is progressing
+        function (xhr) {
+            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        // called when loading has errors
+        function (error) {
+            console.log('An error happened');
+        }
+    );
+
+
+    //
+
+    scene.add(spaceship);
+
+    return spaceship
+}
+
+function makeWireBall(scene, group) {
+    // create a wireframe spaceship
+
+    // import model
+    var spaceship = loadSpaceship(scene);
+
+
 
     var planeGeometry = new THREE.PlaneGeometry(245, 400, 20, 20);
     var planeMaterial = new THREE.MeshLambertMaterial({
@@ -105,34 +157,42 @@ function makeWireBall(scene, group, saveOriginalVertices) {
         spotLight,
         saveOriginalVerticesTmp,
         neonMaterial,
+        spaceship
     }
 }
 
 
-function animateWireBall(frequencyData, group, rotatePlane) {
+function animateWireBall(frequencyData, group, rotatePlane, spaceship) {
     const children = group.children;
     const ball = children[children.length - 1];
     const planes = children.slice(0, children.length - 1);
 
-    var lowerHalfArray = frequencyData.slice(10, frequencyData.length / 2 - 10);
+    var lowerHalfArray = frequencyData.slice(0, (frequencyData.length / 2) - 1);
     var upperHalfArray = frequencyData.slice(
-        frequencyData.length / 2 - 10,
-        frequencyData.length - 10,
+        (frequencyData.length / 2) - 1,
+        frequencyData.length - 1
     );
 
+    var overallAvg = avg(frequencyData);
     var lowerMax = max(lowerHalfArray);
     var lowerAvg = avg(lowerHalfArray);
+    var upperMax = max(upperHalfArray);
     var upperAvg = avg(upperHalfArray);
 
     var lowerMaxFr = lowerMax / lowerHalfArray.length;
+    var lowerAvgFr = lowerAvg / lowerHalfArray.length;
+    var upperMaxFr = upperMax / upperHalfArray.length;
     var upperAvgFr = upperAvg / upperHalfArray.length;
 
     for (let i = 0; i < planes.length; i++) {
         const plane = planes[i];
+
         if (i % 2 === 0) {
-            makeRoughGround(plane, modulate(upperAvg, 0, 1, 0.5, upperAvgFr));
+            // makeRoughGround(plane, modulate(upperAvg, 0, 1, 0.5, upperAvgFr));
+            makeRoughGround(plane, modulate(upperAvgFr, 0, 1, 0.5, 4));
         } else {
-            makeRoughGround(plane, modulate(lowerMaxFr, 0, 1, 0.5, lowerMaxFr));
+            // makeRoughGround(plane, modulate(lowerMaxFr, 0, 1, 0.5, lowerMaxFr));
+            makeRoughGround(plane, modulate(lowerMaxFr, 0, 1, 0.5, 4));
         }
         plane.material.color.setHSL(0.5, 0.5, 0.5);
 
@@ -144,9 +204,10 @@ function animateWireBall(frequencyData, group, rotatePlane) {
 
         if (rotatePlane.active === true) {
             if (rotatePlane.direction === "left") {
-                plane.rotation.y += 0.01;
-            } else {
                 plane.rotation.y -= 0.01;
+            } else {
+                plane.rotation.y += 0.01;
+                // spaceship.rotation.x += 0.001;
             }
         }
         if (rotatePlane.reset) {
@@ -158,39 +219,83 @@ function animateWireBall(frequencyData, group, rotatePlane) {
         rotatePlane.reset = false;
     }
 
-    // every 100 seconds, start the plane rotation
-    // if (rotatePlane.active === false) {
-    //     if (rotatePlane.time === 0) {
-    //         rotatePlane.time = Date.now();
-    //     } else if (Date.now() - rotatePlane.time > 1000) {
-    //         rotatePlane.active = true;
-    //         rotatePlane.time = 0;
-    //     }
-    // }
-
-    // if plane did a full rotation, stop the rotation
+    // rotation
     if (rotatePlane.active === true) {
-        console.log(planes[0].rotation.y);
-        if (planes[0].rotation.y >= Math.PI || planes[0].rotation.y <= -Math.PI) {
+        if (
+            planes[0].rotation.y <= -Math.PI * rotatePlane.nbRotate ||
+            planes[0].rotation.y >= Math.PI * rotatePlane.nbRotate
+        ) {
             rotatePlane.active = false;
-            rotatePlane.reset = true;
 
-            setTimeout(() => {
-                rotatePlane.active = true
-                if (rotatePlane.direction === "left") {
-                    rotatePlane.direction = "right"
-                } else {
-                    rotatePlane.direction = "left"
-                }
-            }, 10000);
+            rotatePlane.timers.push(
+                setTimeout(() => {
+                    rotatePlane.active = true
+                    if (rotatePlane.direction === "left") {
+                        rotatePlane.direction = "right"
+                    } else {
+                        rotatePlane.direction = "left"
+                    }
+                    rotatePlane.clearTimerList.push(0)
+                }, rotatePlane.interval * 1)
+            );
+
+            rotatePlane.timers.push(
+                setTimeout(() => {
+                    rotatePlane.active = true;
+                    rotatePlane.nbRotate += 1;
+                    rotatePlane.clearTimerList.push(1)
+                }, rotatePlane.interval * 2)
+            );
+
+            rotatePlane.timers.push(
+                setTimeout(() => {
+                    rotatePlane.active = true;
+                    rotatePlane.nbRotate -= 1.5;
+                    rotatePlane.clearTimerList.push(2)
+                }, rotatePlane.interval * 3)
+            );
+
+            rotatePlane.timers.push(
+                setTimeout(() => {
+                    rotatePlane.active = true;
+                    rotatePlane.nbRotate += 0.25;
+                    rotatePlane.clearTimerList.push(3)
+                }, rotatePlane.interval * 4)
+            );
+
+            rotatePlane.timers.push(
+                setTimeout(() => {
+                    rotatePlane.active = true;
+                    rotatePlane.nbRotate -= 0.25;
+                    rotatePlane.clearTimerList.push(4)
+                }, rotatePlane.interval * 6)
+            );
+
+            rotatePlane.timers.push(
+                setTimeout(() => {
+                    rotatePlane.active = false;
+                    rotatePlane.reset = true;
+                }, rotatePlane.interval * 5.5)
+            );
         }
+
+        spaceship.rotation.set(0, 0, 0)
+        // spaceship.rotation.x += 0.01;
+        // spaceship.position.y = Math.cos(planes[0].rotation.y) * 100
+        // spaceship.position.x = Math.sin(planes[0].rotation.y) * 100
+        // spaceship.position.z = 5
+        // spaceship.lookAt(ball.position)
     }
 
     makeRoughBall(
         ball,
-        modulate(Math.pow(lowerMaxFr, 0.8), 0, 1, 0, 8),
+        modulate(Math.pow(lowerAvgFr, 0.8), 0, 1, 0, 8),
         modulate(upperAvgFr, 0, 1, 0, 4),
     );
+
+    rotatePlane.clearTimerList.forEach((timerIdx) => {
+        clearTimeout(rotatePlane.timers[timerIdx]);
+    })
 }
 
 function resetPlanePosition(planes) {

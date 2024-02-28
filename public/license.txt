@@ -1,0 +1,11 @@
+Model Information:
+* title:	High Poly X-Wing Fighter
+* source:	https://sketchfab.com/3d-models/high-poly-x-wing-fighter-f2170d4a3ee04e8588c0ad29d4f91767
+* author:	charles.woods (https://sketchfab.com/charles.woods)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "High Poly X-Wing Fighter" (https://sketchfab.com/3d-models/high-poly-x-wing-fighter-f2170d4a3ee04e8588c0ad29d4f91767) by charles.woods (https://sketchfab.com/charles.woods) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -1,22 +1,25 @@
 <script>
   import WireBall from "./lib/WireBall.svelte";
-  $: canUseMic = null;
-  $: audioContext = null;
+  let audioContext = null;
+
+  let canUseAudio = false;
 </script>
 
-{#if canUseMic}
-  <WireBall audioContext />
+{#if canUseAudio}
+  <WireBall />
+  <div id="debug" class="debug"></div>
 {:else}
-  <button
-    on:click={async () => {
-      canUseMic = !canUseMic;
-      audioContext = new AudioContext();
-    }}>Toggle Mic</button
-  >
+  <button on:click={() => (canUseAudio = !canUseAudio)}>Enable audio</button>
 {/if}
 
 <!-- <WireBall /> -->
 <style>
+  .debug {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 100;
+  }
   button {
     position: absolute;
     top: 50%;

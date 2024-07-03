@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { SimplexNoise } from "three/examples/jsm/math/SimplexNoise.js";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { lerp } from "three/src/math/MathUtils.js";
 
 var noise = new SimplexNoise();
 
@@ -26,12 +27,21 @@ function loadSpaceship(scene) {
         // called when the resource is loaded
         function (gltf) {
             gltf.scene.scale.set(1, 1, 1);
-            gltf.scene.position.set(0, 0, 100);
+            gltf.scene.position.set(10, -10, 10);
             gltf.scene.rotation.set(
                 0,
                 Math.PI,
                 0
             )
+
+            // change the color of the spaceship
+            gltf.scene.traverse(function (child) {
+                if (child.isMesh) {
+                    // child.material.color.set(0xe2825c);
+                    child.material.emissive.set(0x5551a1);
+                    child.material.emissiveIntensity = 0.25;
+                }
+            });
             spaceship.add(gltf.scene);
         },
         // called while loading is progressing
@@ -55,10 +65,7 @@ function loadSpaceship(scene) {
 function makeWireBall(scene, group) {
     // create a wireframe spaceship
 
-    // import model
     var spaceship = loadSpaceship(scene);
-
-
 
     var planeGeometry = new THREE.PlaneGeometry(245, 400, 20, 20);
     var planeMaterial = new THREE.MeshLambertMaterial({
@@ -133,16 +140,32 @@ function makeWireBall(scene, group) {
     var ambientLight = new THREE.AmbientLight(0xaaaaaa);
     scene.add(ambientLight);
 
-    var spotLight = new THREE.SpotLight(0xffffff);
-    spotLight.intensity = 0.9;
-    spotLight.position.set(-10, 40, 20);
-    spotLight.lookAt(ball);
-    spotLight.castShadow = true;
-    scene.add(spotLight);
-    //light helper
-    var spotLightHelper = new THREE.SpotLightHelper(spotLight);
-    scene.add(spotLightHelper);
+    // add stars background
+    var starsGeometry = new THREE.BufferGeometry();
+    var starsMaterial = new THREE.PointsMaterial({
+        color: 0x888888,
+        size: 0.1,
+    });
 
+    var starsVertices = [];
+
+    for (let i = 0; i < 1000; i++) {
+        const x = (Math.random() - 1) / window.innerWidth * 1;
+        const y = (Math.random() - 1) / window.innerHeight * 1;
+        const z = -100;
+        // const z = (Math.random() - 0.5) * 2000;
+
+        starsVertices.push(x, y, z);
+    }
+
+    starsGeometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(starsVertices, 3)
+    );
+
+    var stars = new THREE.Points(starsGeometry, starsMaterial);
+
+    scene.add(stars);
 
     scene.add(group);
     return {
@@ -154,7 +177,6 @@ function makeWireBall(scene, group) {
         normalMaterial,
         ball,
         ambientLight,
-        spotLight,
         saveOriginalVerticesTmp,
         neonMaterial,
         spaceship
@@ -173,28 +195,57 @@ function animateWireBall(frequencyData, group, rotatePlane, spaceship) {
         frequencyData.length - 1
     );
 
-    var overallAvg = avg(frequencyData);
-    var lowerMax = max(lowerHalfArray);
-    var lowerAvg = avg(lowerHalfArray);
-    var upperMax = max(upperHalfArray);
-    var upperAvg = avg(upperHalfArray);
+    const overallAvg = avg(frequencyData);
+    const lowerMax = max(lowerHalfArray);
+    const lowerAvg = avg(lowerHalfArray);
+    const upperMax = max(upperHalfArray);
+    const upperAvg = avg(upperHalfArray);
 
-    var lowerMaxFr = lowerMax / lowerHalfArray.length;
-    var lowerAvgFr = lowerAvg / lowerHalfArray.length;
-    var upperMaxFr = upperMax / upperHalfArray.length;
-    var upperAvgFr = upperAvg / upperHalfArray.length;
+    const lowerMaxFr = lowerMax / lowerHalfArray.length;
+    const lowerAvgFr = lowerAvg / lowerHalfArray.length;
+    const upperMaxFr = upperMax / upperHalfArray.length;
+    const upperAvgFr = upperAvg / upperHalfArray.length;
+
+    // get highest number from the frequency array
+    const highestFr = Math.max(...frequencyData);
+
+    const debug = document.getElementById("debug");
+    debug.innerHTML = `
+    overallAvg: ${Math.floor(overallAvg)}<br>
+    lowerMax: ${Math.floor(lowerMax)}<br>
+    lowerAvg: ${Math.floor(lowerAvg)}<br>
+    upperMax: ${Math.floor(upperMax)}<br>
+    upperAvg: ${Math.floor(upperAvg)}<br>
+    highestFr: ${Math.floor(highestFr)}<br>
+    `;
+    makeRoughBall(
+        ball,
+        modulate(lowerAvgFr, 0, 1, 0, 8),
+        modulate(upperMaxFr, 0, 1, 0, 4),
+    );
+
+
+    // rotate the ball each time the bass frequency is higher than 140 (to the right)
+    if (lowerMax > 50) {
+        ball.rotation.x += 0.01;
+    }
+    if (upperMax > 50) {
+        ball.rotation.y += 0.01;
+    }
+    if (overallAvg > 10) {
+        ball.rotation.z += 0.01;
+    }
 
     for (let i = 0; i < planes.length; i++) {
         const plane = planes[i];
 
         if (i % 2 === 0) {
-            // makeRoughGround(plane, modulate(upperAvg, 0, 1, 0.5, upperAvgFr));
             makeRoughGround(plane, modulate(upperAvgFr, 0, 1, 0.5, 4));
         } else {
-            // makeRoughGround(plane, modulate(lowerMaxFr, 0, 1, 0.5, lowerMaxFr));
             makeRoughGround(plane, modulate(lowerMaxFr, 0, 1, 0.5, 4));
         }
-        plane.material.color.setHSL(0.5, 0.5, 0.5);
+        const campledColor = modulate(overallAvg, 0, 255, 0, 1);
+        plane.material.color.setHSL(campledColor, 0.5, 0.5);
 
         plane.position.z -= mouvementValue
 
@@ -204,10 +255,9 @@ function animateWireBall(frequencyData, group, rotatePlane, spaceship) {
 
         if (rotatePlane.active === true) {
             if (rotatePlane.direction === "left") {
-                plane.rotation.y -= 0.01;
+                plane.rotation.y -= rotatePlane.speed;
             } else {
-                plane.rotation.y += 0.01;
-                // spaceship.rotation.x += 0.001;
+                plane.rotation.y += rotatePlane.speed
             }
         }
         if (rotatePlane.reset) {
@@ -220,82 +270,91 @@ function animateWireBall(frequencyData, group, rotatePlane, spaceship) {
     }
 
     // rotation
+    const xwing = rotatePlane.spaceship
     if (rotatePlane.active === true) {
         if (
             planes[0].rotation.y <= -Math.PI * rotatePlane.nbRotate ||
             planes[0].rotation.y >= Math.PI * rotatePlane.nbRotate
         ) {
             rotatePlane.active = false;
+            if (rotatePlane.direction === "left") {
+                rotatePlane.direction = "right"
+                xwing.direction = "right"
+            } else {
+                rotatePlane.direction = "left"
+                xwing.direction = "left"
+            }
+        }
+    }
+    updateSpaceship(spaceship, rotatePlane)
+}
 
-            rotatePlane.timers.push(
-                setTimeout(() => {
-                    rotatePlane.active = true
-                    if (rotatePlane.direction === "left") {
-                        rotatePlane.direction = "right"
+function updateSpaceship(spaceship, rotatePlane) {
+    const xwing = rotatePlane.spaceship
+    if (spaceship && xwing.active === true) {
+        if (rotatePlane.active === false) {
+            if (xwing.timer.play === null) {
+                xwing.timer.play = setInterval(() => {
+                    if (xwing.active === false) {
+                        xwing.active = true
                     } else {
-                        rotatePlane.direction = "left"
+                        clearInterval(xwing.timer.play)
+                        xwing.active = false
+                        xwing.timer.play = null
                     }
-                    rotatePlane.clearTimerList.push(0)
-                }, rotatePlane.interval * 1)
-            );
-
-            rotatePlane.timers.push(
-                setTimeout(() => {
-                    rotatePlane.active = true;
-                    rotatePlane.nbRotate += 1;
-                    rotatePlane.clearTimerList.push(1)
-                }, rotatePlane.interval * 2)
-            );
-
-            rotatePlane.timers.push(
-                setTimeout(() => {
-                    rotatePlane.active = true;
-                    rotatePlane.nbRotate -= 1.5;
-                    rotatePlane.clearTimerList.push(2)
-                }, rotatePlane.interval * 3)
-            );
-
-            rotatePlane.timers.push(
-                setTimeout(() => {
-                    rotatePlane.active = true;
-                    rotatePlane.nbRotate += 0.25;
-                    rotatePlane.clearTimerList.push(3)
-                }, rotatePlane.interval * 4)
-            );
-
-            rotatePlane.timers.push(
-                setTimeout(() => {
-                    rotatePlane.active = true;
-                    rotatePlane.nbRotate -= 0.25;
-                    rotatePlane.clearTimerList.push(4)
-                }, rotatePlane.interval * 6)
-            );
-
-            rotatePlane.timers.push(
-                setTimeout(() => {
-                    rotatePlane.active = false;
-                    rotatePlane.reset = true;
-                }, rotatePlane.interval * 5.5)
-            );
+                }, 1000 * 15);
+            } else if (xwing.timer.stop === null) {
+                xwing.timer.stop = setInterval(() => {
+                    if (xwing.active === true) {
+                        xwing.active = false
+                    } else {
+                        clearInterval(xwing.timer.stop)
+                        xwing.active = true
+                        xwing.timer.stop = null
+                    }
+                }, 1000 * 10);
+            }
         }
 
-        spaceship.rotation.set(0, 0, 0)
-        // spaceship.rotation.x += 0.01;
-        // spaceship.position.y = Math.cos(planes[0].rotation.y) * 100
-        // spaceship.position.x = Math.sin(planes[0].rotation.y) * 100
-        // spaceship.position.z = 5
-        // spaceship.lookAt(ball.position)
+        if (xwing.direction === "left") {
+            spaceship.rotation.z -= 0.02;
+        } else {
+            spaceship.rotation.z += 0.02;
+        }
+
+
     }
 
-    makeRoughBall(
-        ball,
-        modulate(Math.pow(lowerAvgFr, 0.8), 0, 1, 0, 8),
-        modulate(upperAvgFr, 0, 1, 0, 4),
-    );
+    if (xwing.active === false) {
+        hoverSpaceship(spaceship, rotatePlane)
+    }
 
-    rotatePlane.clearTimerList.forEach((timerIdx) => {
-        clearTimeout(rotatePlane.timers[timerIdx]);
-    })
+    if (xwing.doABarrelRoll === true) {
+        const spaceshipOrigin = spaceship.children[0]
+        if (xwing.direction === "left") {
+            spaceshipOrigin.rotation.z -= 0.1;
+        } else {
+            spaceshipOrigin.rotation.z += 0.1;
+        }
+        // stop in 1 second
+        xwing.timer.stopBarellRoll = setTimeout(() => {
+            xwing.doABarrelRoll = false
+            clearInterval(xwing.timer.barellRoll)
+        }, 1000);
+    }
+
+    if (xwing.doABarrelRoll === false) {
+        xwing.timer.barellRoll = setTimeout(() => {
+            xwing.doABarrelRoll = true
+            clearInterval(xwing.timer.stopBarellRoll)
+        }, 2000);
+    }
+
+    if (xwing.reset) {
+        spaceship.position.set(10, -10, 10)
+        xwing.active = false
+        xwing.reset = false
+    }
 }
 
 function resetPlanePosition(planes) {
@@ -315,20 +374,19 @@ function makeRoughBall(mesh, bassFr, treFr) {
             vertices[i + 1],
             vertices[i + 2],
         );
-        var offset = mesh.geometry.parameters.radius;
         var amp = 2.5;
         var time = window.performance.now();
         vertex.normalize();
         var rf = 0.00001;
         var distance =
-            offset +
+            mesh.geometry.parameters.radius + // offset
             bassFr +
             noise.noise3d(
-                vertex.x + time * rf * 7,
-                vertex.y + time * rf * 8,
-                vertex.z + time * rf * 9,
+                vertex.x + time * rf * 7.0,
+                vertex.y + time * rf * 8.0,
+                vertex.z + time * rf * 9.0,
             ) *
-            amp *
+            amp * // amplify
             treFr;
         vertex.multiplyScalar(distance);
 
@@ -350,9 +408,9 @@ function makeRoughGround(mesh, distortionFr) {
             vertices[i + 1],
             vertices[i + 2],
         );
-        var amp = 1;
-        var time = Date.now();
-        var distance =
+        const amp = 1;
+        const time = Date.now();
+        const distance =
             (noise.noise(vertex.x + time * 0.0003, vertex.y + time * 0.0001) + 0) *
             distortionFr *
             amp;
@@ -369,22 +427,60 @@ function fractionate(val, minVal, maxVal) {
 }
 
 function modulate(val, minVal, maxVal, outMin, outMax) {
-    var fr = fractionate(val, minVal, maxVal);
-    var delta = outMax - outMin;
+    const fr = fractionate(val, minVal, maxVal);
+    const delta = outMax - outMin;
     return outMin + fr * delta;
 }
 
 function avg(arr) {
-    var total = arr.reduce(function (sum, b) {
-        return sum + b;
-    });
-    return total / arr.length;
+    return arr.reduce((a, b) => a + b) / arr.length;
+
 }
 
 function max(arr) {
     return arr.reduce(function (a, b) {
         return Math.max(a, b);
     });
+}
+
+const hoverSpaceship = (spaceship, rotatePlane) => {
+    const time = window.performance.now();
+    const t = Math.sin(time * 0.00001); // Smooth transition parameter
+    // Interpolate smoothly with current position
+    const normalizedY = (spaceship.position.y) / 2000;
+    const normalizedZ = (spaceship.position.z) / 2000;
+    const normalizedX = (spaceship.position.x) / 2000;
+    let newY, newZ, newX;
+
+    if (rotatePlane.spaceship.direction === "left" && spaceship.position > 0) {
+        // interpolate the position
+        // const newY = normalizedY
+        newY = -lerp(normalizedY, spaceship.position.y, t);
+        newZ = -lerp(normalizedZ, spaceship.position.z, t);
+        newX = lerp(normalizedX, spaceship.position.x, t);
+    } else if (rotatePlane.spaceship.direction === "right" && spaceship.position > 0) {
+        newY = lerp(normalizedY, spaceship.position.y, t);
+        newZ = -lerp(normalizedZ, spaceship.position.z, t);
+        newX = -lerp(normalizedX, spaceship.position.x, t);
+    } else if (rotatePlane.spaceship.direction === "left" && spaceship.position < 0) {
+        newY = lerp(normalizedY, spaceship.position.y, t);
+        newZ = -lerp(normalizedZ, spaceship.position.z, t);
+        newX = -lerp(normalizedX, spaceship.position.x, t);
+    } else if (rotatePlane.spaceship.direction === "right" && spaceship.position < 0) {
+        newY = -lerp(normalizedY, spaceship.position.y, t);
+        newZ = -lerp(normalizedZ, spaceship.position.z, t);
+        newX = lerp(normalizedX, spaceship.position.x, t);
+    } else {
+        newY = Math.sin(time * 0.001) * 10;
+        newZ = lerp(normalizedZ, spaceship.position.z, t);
+        newX = Math.cos(time * 0.001) * 10;
+    }
+
+    // set the new position
+    spaceship.position.y = newY || spaceship.position.y;
+    spaceship.position.z = newZ || spaceship.position.z;
+    spaceship.position.x = newX || spaceship.position.x;
+
 }
 
 export { makeWireBall, animateWireBall, resetPlanePosition };

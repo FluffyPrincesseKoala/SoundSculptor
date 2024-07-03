@@ -16,9 +16,10 @@
     document.body.appendChild(stats.dom);
 
     let camera, renderer, saveBall, group, canvas, composer;
-    let saveOriginalVertices = [];
+    var saveOriginalVertices = [];
+    var rotatePlane = {};
 
-    export let audioContext;
+    let audioContext;
 
     const sizes = {
         width: window.innerWidth,
@@ -59,7 +60,6 @@
             normalMaterial,
             ball,
             ambientLight,
-            spotLight,
             saveOriginalVerticesTmp,
             neonMaterial,
             spaceship,
@@ -67,18 +67,21 @@
         saveOriginalVertices = saveOriginalVerticesTmp;
         saveBall = ball;
 
+        if (audioContext === false) {
+            return;
+        }
         // sample audio from mic
-        audioContext = new AudioContext();
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
         const analyser = audioContext.createAnalyser();
         const source = audioContext.createMediaStreamSource(
             await navigator.mediaDevices.getUserMedia({ audio: true }),
         );
-
-        source.connect(analyser);
         analyser.fftSize = 256;
+        source.connect(analyser);
         const bufferLength = analyser.frequencyBinCount;
-        const frequencyData = new Uint8Array(bufferLength);
-
+        var frequencyData = new Uint8Array(bufferLength);
+        analyser.getByteFrequencyData(frequencyData);
         //reset the ball to its original state every 5 seconds
         const resetBall = () => {
             for (
@@ -104,7 +107,7 @@
         );
         bloomPass.threshold = 0;
         // Calculate the distance between the camera and the ball
-        const distanceToBall = camera.position.distanceTo(saveBall.position);
+        // const distanceToBall = camera.position.distanceTo(saveBall.position);
         // Adjust the bloom strength based on the distance
         bloomPass.strength = bloomPass.radius = -0.5;
         const outputPass = new OutputPass();
@@ -118,8 +121,8 @@
          * animate the scene
          **/
         let destroySphere = 0;
-        const rotatePlane = {
-            active: true,
+        rotatePlane = {
+            active: false,
             // active: false,
             speed: 0.005,
             // 10 seconds
@@ -127,29 +130,42 @@
             time: 0,
             reset: false,
             nbRotate: 1,
-            timers: [],
-            clearTimerList: [],
-            clearTimers: () => {
-                rotatePlane.clearTimerList.forEach((timer) => {
-                    clearInterval(timer);
-                });
+            spaceship: {
+                active: false,
+                direction: "right",
+                speed: 0.005,
+                interval: 1000 * 10,
+                time: 0,
+                reset: false,
+                nbRotate: 1,
+                doABarrelRoll: false,
+                timer: {
+                    play: null,
+                    stop: null,
+                    barellRoll: null,
+                    stopBarellRoll: null,
+                },
+                rotationZ: 1,
             },
         };
+        let lastTime = 0;
         async function animate() {
+            const time = performance.now();
             stats.begin();
-            controls.update();
             requestAnimationFrame(animate);
 
-            // composer.render();
+            controls.update();
 
-            if (destroySphere === 100) {
-                resetBall();
-                destroySphere = 0;
-            }
             destroySphere++;
 
             analyser.getByteFrequencyData(frequencyData);
+            // if all frequencyData is 0, reset the audio context
             animateWireBall(frequencyData, group, rotatePlane, spaceship);
+
+            if (destroySphere % (60 * 10) === 0) {
+                resetBall();
+                destroySphere = 0;
+            }
 
             renderer.render(scene, camera);
             composer.render();
@@ -160,6 +176,7 @@
 
         /**
          * Event listeners
+         * TODO map them to the svelte component and not the window
          */
         window.addEventListener("resize", () => {
             // Update sizes
@@ -202,28 +219,40 @@
                 // reset the plane
                 rotatePlane.active = false;
                 rotatePlane.reset = true;
+
+                // reset the spaceship
+                rotatePlane.spaceship.active = false;
+                rotatePlane.spaceship.reset = true;
             }
             if (event.key === "ArrowRight") {
                 // right arrow key
-                // rotatePlane.active = !rotatePlane.active;
+                rotatePlane.active = true;
                 rotatePlane.direction = "right";
+                rotatePlane.spaceship.active = true;
+                rotatePlane.spaceship.direction = "right";
             }
             if (event.key === "ArrowLeft") {
                 // left arrow key
-                // rotatePlane.active = !rotatePlane.active;
+                rotatePlane.active = true;
                 rotatePlane.direction = "left";
+                rotatePlane.spaceship.active = true;
+                rotatePlane.spaceship.direction = "left";
             }
             if (event.key === "ArrowUp") {
                 // up arrow key
                 rotatePlane.speed += 0.005;
             }
-            // if (event.key === "ArrowDown") {
-            //     // down arrow key
-            //     rotatePlane.speed -= 0.005;
-            // }
+            if (event.key === "ArrowDown") {
+                // down arrow key
+                rotatePlane.speed -= 0.005;
+            }
+            if (event.key === " ") {
+                rotatePlane.active = !rotatePlane.active;
+                rotatePlane.spaceship.active = !rotatePlane.spaceship.active;
+            }
         });
 
-        // setInterval(resetBall, 1000);
+        setInterval(resetBall, 1000);
     });
 
     onDestroy(() => {
@@ -232,11 +261,7 @@
     });
 </script>
 
-{#if audioContext}
-    <canvas bind:this={canvas}> </canvas>
-{:else}
-    <p>Sorry, your browser does not support the Web Audio API</p>
-{/if}
+<canvas bind:this={canvas}> </canvas>
 
 <style>
     canvas {
